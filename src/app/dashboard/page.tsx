@@ -2,7 +2,6 @@
 
 import { useUser } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 
 type Lead = {
   id: string;
@@ -25,37 +24,48 @@ export default function DashboardPage() {
 
   async function fetchLeads() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("leads")
-      .select("*")
-      .eq("user_id", user?.id)
-      .order("created_at", { ascending: false });
-    if (error) console.error(error);
-    else setLeads(data || []);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/leads", { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to fetch leads");
+      setLeads(json.leads || []);
+    } catch (err) {
+      console.error("Error fetching leads:", err);
+      setLeads([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function addLead(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name) return;
-    const { error } = await supabase.from("leads").insert([
-      {
-        user_id: user?.id,
-        name: form.name,
-        email: form.email,
-        company: form.company,
-      },
-    ]);
-    if (!error) {
+
+    try {
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Insert failed");
+
+      // refresh UI
       setForm({ name: "", email: "", company: "" });
       fetchLeads();
-    } else console.error(error);
+    } catch (err) {
+      console.error("Error adding lead:", err);
+    }
   }
 
   async function deleteLead(id: string) {
-    const { error } = await supabase.from("leads").delete().eq("id", id);
-    if (!error) setLeads(leads.filter((l) => l.id !== id));
-    else console.error(error);
+    try {
+      const res = await fetch(`/api/leads?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      setLeads(leads.filter((l) => l.id !== id));
+    } catch (err) {
+      console.error("Error deleting lead:", err);
+    }
   }
 
   const filteredLeads = leads.filter(
